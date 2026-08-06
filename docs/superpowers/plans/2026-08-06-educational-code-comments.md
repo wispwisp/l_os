@@ -24,6 +24,7 @@
 - **Linker scripts take `/* */` only.** `//` and `#` are not comments to `ld`.
 - **Makefile comments sit at column 0, never on a tab-indented recipe line.** A `#` inside a recipe is passed to the shell instead of being stripped by `make`.
 - **All comments are English.** Existing comments are rewritten and their typos corrected; the two Russian notes are translated.
+  - **One exception, ruled by the author:** the design-sketch comments inside `create_process_pages` (`allocator.S:106-120`) are preserved exactly as written, `exeption` typo included. They are a record of design intent, not explanatory prose. Task 6 Step 3 is authoritative on this.
 - **Marker prefixes:** `BUG:` for a defect (mechanism + intended form, no fix). `NOTE:` for a deliberate simplification.
 - **Do not touch** `build_claudecode_isolation_container.sh`, `run_claudecode_isolation_container.sh`, `claudecode.dockerfile`, `check_grammar.sh`. `claudecode.dockerfile` has unrelated staged changes — leave them staged.
 - **Commit authorship:** name `wisp`, email `forworkandtravel@yandex.ru`. Short imperative subject ≤72 chars, body wrapped at 72, explains *why*. No AI-attribution trailers.
