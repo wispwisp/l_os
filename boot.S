@@ -1,12 +1,39 @@
+	####################
+	# BOOT SECTOR
+	####################
+	# The BIOS finds this code by reading the first 512 bytes of
+	# the disk, checking for 0x55AA in the last two, and jumping
+	# to it at physical 0x7c00 in 16-bit real mode. Everything
+	# below has to fit in those 512 bytes.
+	#
+	# Its job is narrow: get the CPU from real mode into 32-bit
+	# protected mode, pull the kernel off the disk, and jump to
+	# it. See docs/notes/01-real-mode-boot.md.
+
 	.section .text
 	.global start
+
+	# Where load_kernel deposits the kernel: 1 MB, the first
+	# address clear of the real-mode and BIOS clutter below.
 	.set KERNEL_PLACE, 0x100000
 start:
 	.code16
-	
+
+	# No IDT exists yet, so an interrupt here would vector
+	# through whatever the BIOS left behind, into code that is
+	# about to stop being valid. Mask them until the kernel
+	# installs its own handlers.
 	cli
+	# Clear the direction flag. Every string instruction from
+	# here on - the insw below, the rep stosl in boot_paging -
+	# assumes it counts upward, and the BIOS makes no promise
+	# about DF on entry.
 	cld
-	
+
+	# Real-mode addressing is segment * 16 + offset. Zeroing all
+	# three segment registers makes offsets equal physical
+	# addresses, so linking at 0x7c00 is enough to make every
+	# reference in this file resolve correctly.
 	xorw	%ax, %ax
 	movw	%ax, %ds
 	movw	%ax, %es
