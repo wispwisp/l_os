@@ -83,18 +83,34 @@ seta20_2:
 	outb	%al, $0x60
 	
 	####################
-	# protectd mode:
+	# ENTER PROTECTED MODE
+	####################
+	# Three steps, in this order and no other:
+	#   1. lgdt - the table must already be valid before any
+	#      selector load, because the very next step makes
+	#      selector loads meaningful.
+	#   2. Set CR0 bit 0 (PE). The CPU is in protected mode from
+	#      here, but CS still holds a real-mode segment value.
+	#   3. A FAR jump. Only a far jump or far call reloads CS,
+	#      and until CS holds a real selector the CPU still
+	#      decodes with 16-bit defaults. This is why the switch
+	#      cannot end with a near jump.
+	# See docs/notes/03-protected-mode.md.
+
 	lgdt    gdtdesc
 	movl	%cr0, %eax
-	orl	$0x1, %eax # pr.mode enable flag
+	orl	$0x1, %eax # protected mode enable flag
 	movl    %eax, %cr0
 
-	# jump im 32-bit (selecotr, addr)
+	# jump into 32-bit code (selector, address)
 	ljmp	$0x8, $protcseg
 	
 	.code32
 protcseg:
-	# Set up the protected-mode registers:
+	# The far jump reloaded CS. The other five segment registers
+	# still hold real-mode values and must be pointed at the
+	# flat data descriptor before any access uses them. 0x10 is
+	# the third GDT entry: 2 * 8 bytes.
 	movw	$0x10, %ax # data segment selector
 	movw    %ax, %ds
 	movw    %ax, %es
@@ -102,14 +118,26 @@ protcseg:
 	movw    %ax, %gs
 	movw    %ax, %ss
 
-staсk_initialization: # инициализируем стек 0x7c00 (тк как растет вниз - пох)
+	# The stack goes at 0x7c00 and grows downward, into the free
+	# low memory below the boot sector. Nothing lives there, so
+	# it cannot collide with this code sitting just above it.
+	# EBP is zeroed to terminate any frame-pointer walk.
+	#
+	# NOTE: the 'c' in this label is Cyrillic U+0441, not Latin
+	# 'c'. GAS accepts it because the label is never referenced,
+	# so no other spelling ever has to match. Left alone here -
+	# renaming it would be a code change, not a comment change.
+staсk_initialization:
 	movl	$0x0, %ebp
 	movl	$start, %esp
 kernel_entry:	
 	call	load_kernel
+	# Absolute jump to 0x100000, where load_kernel put the image
+	# and where link_kernel.ld placed main.
 	jmp	KERNEL_PLACE
 
-	# bad:
+	# Not reached. If that jump ever returns, stop rather than
+	# execute whatever bytes follow.
 	hlt
 spin:	jmp	spin
 
@@ -207,7 +235,9 @@ load_kernel:
 	.p2align 2
 gdt:
 	# Entry 0 must be null: selector 0 is the architecturally
-	# defined "invalid" value, and loading it faults on use.
+	# defined "invalid" value. Loading it into CS or SS faults
+	# immediately; loading it into DS, ES, FS or GS is allowed,
+	# and the fault arrives when that segment is used.
 	.word 0,0
 	.byte 0,0,0,0
 	# code seg:
@@ -223,6 +253,13 @@ gdtdesc:
 	.word	0x17	# gdt size limit
 	.long	gdt	# gdt address
 boot_signature:	
+	# .org pads with zeros out to byte 510, so the signature
+	# lands at exactly 0x1fe no matter how much code precedes
+	# it. If the code ever exceeds 510 bytes, `as` errors here
+	# instead of silently truncating - which makes this
+	# directive the 512-byte budget check.
 	.org	0x0200-2
+	# The BIOS treats a device as bootable only if these two
+	# bytes are present.
 	.byte	0x55
 	.byte	0xAA
