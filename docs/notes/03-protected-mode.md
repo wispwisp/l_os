@@ -11,26 +11,28 @@ machinery that paging - switched on in chapter 05 - builds on top of.
 `boot.S` only needs the addressing width and the mode bit here; rings
 and paging come later.
 
-## The three-step sequence, and why the order is forced
+## The three-step sequence, and what order is actually forced
 
-Entering protected mode is three instructions, and they only work in
-this order:
+Entering protected mode is three instructions:
 
-1. **`lgdt`** loads the GDT descriptor into `GDTR`. This has to happen
-   first because the next step makes segment selectors start meaning
-   something - if the table isn't valid yet, anything that reads it
-   reads garbage.
+1. **`lgdt`** loads the GDT descriptor into `GDTR`. Once selectors
+   start meaning something - which happens at step 3 - the table has
+   to already be valid, or anything that reads it reads garbage.
 2. **Set `CR0.PE`** (bit 0). This is the actual mode switch: the moment
    this bit is set, the CPU is in protected mode. But `CS` still holds
    whatever real-mode segment value it had before - the switch doesn't
    reload any segment register on its own.
 3. **A far jump** reloads `CS` with a real protected-mode selector.
 
-Skipping step 1 means step 3's far jump loads a selector that indexes
-into an invalid table. Skipping step 2 means there's no protected mode
-to jump into. Reordering steps 2 and 3 is impossible anyway, because
-until `CR0.PE` is set a far jump is still interpreted the real-mode
-way.
+What is actually forced is that steps 1 and 2 both precede step 3:
+skipping step 1 means step 3's far jump loads a selector that indexes
+into an invalid table, and skipping step 2 means there's no protected
+mode to jump into. Steps 1 and 2, though, could swap - nothing reads
+the GDT between them, so setting `CR0.PE` before `lgdt` would work just
+as well. `boot.S` does `lgdt` first because that is the sequence Intel
+documents as recommended practice, not because the CPU requires it.
+Steps 2 and 3 cannot swap: until `CR0.PE` is set, a far jump is still
+interpreted the real-mode way.
 
 ## Why it has to be a *far* jump
 
@@ -68,10 +70,13 @@ chapter 02.
 
 The stack is placed at `0x7c00` - the same address the boot sector was
 loaded to and is currently executing from - and it grows downward from
-there, into the low memory below the boot sector. Nothing occupies
-that memory, so nothing needs to be reserved for the stack: it simply
-claims free space as it grows, and can't collide with the boot code
-sitting just above it.
+there. That downward range isn't entirely empty: the interrupt vector
+table occupies `0x0`-`0x3ff` and the BIOS data area occupies
+`0x400`-`0x4ff`. But between `0x500` and `0x7c00` there is roughly
+30 KB of genuinely free space, and a boot sector's stack never grows
+deep enough to descend all the way down to those structures, so it
+simply claims free space as it grows and can't collide with the boot
+code sitting just above it.
 
 ## The `0x55AA` signature and the `.org` trick
 

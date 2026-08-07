@@ -85,10 +85,13 @@ seta20_2:
 	####################
 	# ENTER PROTECTED MODE
 	####################
-	# Three steps, in this order and no other:
-	#   1. lgdt - the table must already be valid before any
-	#      selector load, because the very next step makes
-	#      selector loads meaningful.
+	# Three steps. What is forced is that both of the first two
+	# precede the third:
+	#   1. lgdt - the table has to be valid before anything can
+	#      consult it. Intel documents lgdt-first as the
+	#      recommended sequence; steps 1 and 2 could in
+	#      principle swap, since nothing reads the GDT between
+	#      them.
 	#   2. Set CR0 bit 0 (PE). The CPU is in protected mode from
 	#      here, but CS still holds a real-mode segment value.
 	#   3. A FAR jump. Only a far jump or far call reloads CS,
@@ -118,9 +121,11 @@ protcseg:
 	movw    %ax, %gs
 	movw    %ax, %ss
 
-	# The stack goes at 0x7c00 and grows downward, into the free
-	# low memory below the boot sector. Nothing lives there, so
-	# it cannot collide with this code sitting just above it.
+	# The stack goes at 0x7c00 and grows downward, into the
+	# roughly 30 KB of free memory below this code. The
+	# interrupt vector table (0x0-0x3ff) and the BIOS data area
+	# (0x400-0x4ff) do occupy the very bottom, but a boot
+	# sector's stack never grows deep enough to reach them.
 	# EBP is zeroed to terminate any frame-pointer walk.
 	#
 	# NOTE: the 'c' in this label is Cyrillic U+0441, not Latin
@@ -145,59 +150,115 @@ spin:	jmp	spin
 	####################
 	####################
 
-	#func:
+	####################
+	# ATA PIO: WAIT FOR THE DRIVE
+	####################
+	# The disk is not memory-mapped. It is driven through eight
+	# I/O ports, 0x1f0-0x1f7, and seven of them are only valid
+	# to touch when the drive says it is not busy.
+	#
+	# Status register (0x1f7):
+	#   bit 7  BSY   busy; every other register is invalid
+	#   bit 6  DRDY  ready to accept a command
+	#   bit 3  DRQ   a sector is ready to transfer
+	#   bit 0  ERR   the last command failed
+	#
+	# Masking to bits 7:6 and comparing against 0x40 means "BSY
+	# clear and DRDY set". Note what it does not check: DRQ, so
+	# this waits for the drive to be idle rather than for data
+	# to be available; and ERR, so a failed read cannot be
+	# distinguished from a good one.
+	#
+	# NOTE: no timeout. A drive that never clears BSY hangs the
+	# boot here forever. Real drivers bound the wait.
+	# See docs/notes/04-ata-pio.md.
+
 wait_disk:
 	movw	$0x1f7, %dx
 testwd:	inb	(%dx), %al
+	# inb loaded only AL, so AH is stale - harmless, because the
+	# comparison below is 8-bit.
 	andw	$0xffc0, %ax
 	cmpb	$0x40, %al
 	jne	testwd
 	ret
 	
-	#func:
+	####################
+	# ATA PIO: READ THE KERNEL
+	####################
+	# Programmed I/O: write the sector address into the port
+	# registers, issue the read command, then pull the data out
+	# of the data port a word at a time with the CPU. No DMA and
+	# no interrupts - which is what you want in a boot sector,
+	# where there is no driver stack and no IDT.
+	#
+	# Port map:
+	#   0x1f2  sector count
+	#   0x1f3  LBA[7:0]
+	#   0x1f4  LBA[15:8]
+	#   0x1f5  LBA[23:16]
+	#   0x1f6  drive select + LBA[27:24]
+	#   0x1f7  command (write) / status (read)
+	#
+	# Ports 0x1f3-0x1f5 are still named after the CHS geometry
+	# fields they used to hold. In LBA mode - selected by bit 6
+	# of 0x1f6 - they are simply the low 24 bits of a linear
+	# sector number.
+	# See docs/notes/04-ata-pio.md.
+
 load_kernel:
 	call wait_disk
 
-	# set sector count:
-	movw	$0x1f2, %dx 
-	movb	$0x1, %al # sector count - 1
+	# BUG (TODO.md): one sector, 512 bytes, of a kernel image
+	# that is 2 MB. It works today only because the kernel's
+	# code ends at 0x80100174 (372 bytes) and everything past
+	# that is storage the kernel writes rather than reads back
+	# from disk. The next routine added can silently run off the
+	# end of what was loaded. Raising this count and the insw
+	# counter below has to happen together.
+	movw	$0x1f2, %dx
+	movb	$0x1, %al # sector count = 1
 	outb	%al, (%dx)
 
-	# set offset:
-	# 0x1f3: (SECTOR COUNT PORT)  (sector number, the actual sector wanted)
-	movb	$0x1, %al # read sector one (read sector two)
-	movb	$0xf3, %dl # put in lower part because dx=0x1f2 --> dh=0x1 dl=f2,f3,etc
+	# LBA 1: the sector straight after this boot sector, which
+	# is where the Makefile's `dd ... seek=1` wrote the kernel.
+	movb	$0x1, %al
+	# DX is 0x01f2, so DH is 0x01 and DL is 0xf2. Only DL has to
+	# change to walk to the next port.
+	movb	$0xf3, %dl
 	outb	%al, (%dx)
-	# 0x1f4: (cylinder low port, cylinders is 0-1024)
-	movb	$0x0, %al # Cylinder 0
+	movb	$0x0, %al # LBA[15:8]
 	movb	$0xf4, %dl
 	outb	%al, (%dx)
-	# 0xf5: (cylinder high port, this makes up the rest of the 1024)
-	movb	$0x0, %al # The rest of the cylinder 0
+	movb	$0x0, %al # LBA[23:16]
 	movb	$0xf5, %dl
 	outb	%al, (%dx)
-	# 0xf6: (drive/head) Drive and head port
-	movb	$0xe0, %al # Drive 0, head 0
+	# 0xe0 = 1110 0000. Bits 7 and 5 are hardwired to 1, bit 6
+	# selects LBA addressing, bit 4 picks drive 0 (master), and
+	# the low nibble carries LBA[27:24].
+	movb	$0xe0, %al
 	movb	$0xf6, %dl
 	outb	%al, (%dx)
 
-	# command - read sectors:
-	# 0x1f7 - Command port
-	movb	$0x20, %al # command - read sectors with retry
+	# 0x20 = READ SECTORS, with retry
+	movb	$0x20, %al
 	movb	$0xf7, %dl
 	outb	%al, (%dx)
 
 	call wait_disk
-	
-	# reads a sector :
-	movl	$KERNEL_PLACE, %edi # kernel place
-	movl	$0x100, %ecx # (One sector-512) / 2  // try 80
-	movw	$0x1f0, %dx # port
+
+	# 0x100 words = 512 bytes = the one sector requested above.
+	# insw reads a word from the port in DX into [EDI] and
+	# advances EDI, because DF is clear.
+	movl	$KERNEL_PLACE, %edi
+	movl	$0x100, %ecx
+	movw	$0x1f0, %dx
 	cld
-	# insl: data from port wich in edx, to edi
-	# rep : until register ecx not zero
+	# NOTE: repnz on a non-comparison string instruction behaves
+	# exactly as rep - INS ignores the flag-testing half of the
+	# F2 prefix. rep is the idiomatic spelling.
 	repnz insw (%dx), (%edi)
-	
+
 	ret
 
 	####################
