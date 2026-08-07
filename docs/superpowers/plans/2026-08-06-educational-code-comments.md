@@ -271,7 +271,9 @@ seta20_2:
 	.p2align 2
 gdt:
 	# Entry 0 must be null: selector 0 is the architecturally
-	# defined "invalid" value, and loading it faults on use.
+	# defined "invalid" value. Loading it into CS or SS faults
+	# immediately; loading it into DS, ES, FS or GS is allowed,
+	# and the fault arrives when that segment is used.
 	.word 0,0
 	.byte 0,0,0,0
 	# code seg:
