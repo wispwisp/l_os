@@ -26,6 +26,7 @@
 - **All comments are English.** Existing comments are rewritten and their typos corrected; the two Russian notes are translated.
   - **One exception, ruled by the author:** the design-sketch comments inside `create_process_pages` (`allocator.S:106-120`) are preserved exactly as written, `exeption` typo included. They are a record of design intent, not explanatory prose. Task 6 Step 3 is authoritative on this.
 - **Marker prefixes:** `BUG:` for a defect (mechanism + intended form, no fix). `NOTE:` for a deliberate simplification.
+- **Chapter anchors are symbolic, never line numbers.** Each chapter's **In the code** table cites the file plus a label, a distinctive instruction, or the ALL-CAPS block header this pass adds — `` `boot.S` — `seta20_1` ``, not `` `boot.S:15-21` ``. Line numbers rot: this pass grows `boot.S` from 140 to roughly 230 lines across Tasks 1–4 alone, and any later edit shifts them again. Symbolic anchors survive that and are greppable, which is how Task 9 verifies them. Every anchor string must appear verbatim in the file it names.
 - **Do not touch** `build_claudecode_isolation_container.sh`, `run_claudecode_isolation_container.sh`, `claudecode.dockerfile`, `check_grammar.sh`. `claudecode.dockerfile` has unrelated staged changes — leave them staged.
 - **Commit authorship:** name `wisp`, email `forworkandtravel@yandex.ru`. Short imperative subject ≤72 chars, body wrapped at 72, explains *why*. No AI-attribution trailers.
   ```sh
@@ -148,10 +149,11 @@ Must state, with these exact values:
 
 | Location | What |
 |---|---|
-| `boot.S:4-5` | `start:`, `.code16` |
-| `boot.S:7-8` | `cli` / `cld` |
-| `boot.S:10-13` | Segment register zeroing |
-| `link.ld:5` | `. = 0x7c00` |
+| `boot.S` — `# BOOT SECTOR` block | Why `0x7c00`, why 512 bytes |
+| `boot.S` — `start:` | Real-mode entry, `.code16` |
+| `boot.S` — `cli` / `cld` | Interrupt masking, string direction |
+| `boot.S` — `xorw %ax, %ax` | Segment register zeroing |
+| `link.ld` — `. = 0x7c00` | The origin that makes it resolve |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -302,11 +304,13 @@ Must state:
 
 | Location | What |
 |---|---|
-| `boot.S:15-21` | Poll, then command `0xd1` |
-| `boot.S:22-28` | Poll, then data `0xdf` |
-| `boot.S:25` | `BUG` — jump targets `seta20_1` |
-| `boot.S:124-133` | The three descriptors |
-| `boot.S:134-136` | `gdtdesc`, the `lgdt` operand |
+| `boot.S` — `# A20 GATE` block | The history and the 8042 protocol |
+| `boot.S` — `seta20_1` | Poll `0x64`, then command `0xd1` |
+| `boot.S` — `seta20_2` | Poll again, then data `0xdf` |
+| `boot.S` — the `jnz seta20_1` inside `seta20_2` | `BUG` — wrong jump target |
+| `boot.S` — `# THE GDT` block | Descriptor layout and the flat model |
+| `boot.S` — `gdt:` | The three descriptors |
+| `boot.S` — `gdtdesc:` | The `lgdt` operand |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -443,12 +447,13 @@ Must state:
 
 | Location | What |
 |---|---|
-| `boot.S:32` | `lgdt gdtdesc` |
-| `boot.S:33-35` | `CR0.PE` |
-| `boot.S:38` | `ljmp $0x8, $protcseg` |
-| `boot.S:41-48` | Data selector reload |
-| `boot.S:50-52` | Stack at `0x7c00` |
-| `boot.S:138-140` | `.org` and `0x55AA` |
+| `boot.S` — `# ENTER PROTECTED MODE` block | Why the order is forced |
+| `boot.S` — `lgdt    gdtdesc` | Loading the descriptor table |
+| `boot.S` — `orl	$0x1, %eax` | Setting `CR0.PE` |
+| `boot.S` — `ljmp	$0x8, $protcseg` | The far jump that reloads `CS` |
+| `boot.S` — `protcseg:` | Data selector reload |
+| `boot.S` — the stack setup above `kernel_entry:` | Stack at `0x7c00`, growing down |
+| `boot.S` — `boot_signature:` | `.org` and `0x55AA` |
 
 - [ ] **Step 5: Verify the build is byte-identical**
 
@@ -626,12 +631,13 @@ Must state:
 
 | Location | What |
 |---|---|
-| `boot.S:66-72` | `wait_disk`, the BSY/DRDY poll |
-| `boot.S:79-81` | Sector count — `BUG` |
-| `boot.S:84-95` | LBA bytes into `0x1f3`–`0x1f5` |
-| `boot.S:96-99` | Drive select, `0xe0` |
-| `boot.S:101-105` | Command `0x20` |
-| `boot.S:109-116` | The `insw` transfer |
+| `boot.S` — `wait_disk` / `testwd` | The BSY/DRDY poll |
+| `boot.S` — `load_kernel` | The whole PIO sequence |
+| `boot.S` — `movb	$0x1, %al # sector count = 1` | Sector count — `BUG` |
+| `boot.S` — the `$0xf3` / `$0xf4` / `$0xf5` writes | LBA bytes |
+| `boot.S` — `movb	$0xe0, %al` | Drive select, LBA mode |
+| `boot.S` — `movb	$0x20, %al` | READ SECTORS command |
+| `boot.S` — `repnz insw` | The data transfer |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -855,15 +861,17 @@ Must state:
 
 | Location | What |
 |---|---|
-| `kernel.S:27` | `jmp boot_paging` |
-| `boot_paging.S:3-4` | The `- KERNEL_BASE` idiom |
-| `boot_paging.S:6-7` | PDE 0, identity map |
-| `boot_paging.S:9-11` | PDEs 1–511 zeroed |
-| `boot_paging.S:13-18` | PDEs 512–1023, the kernel window |
-| `boot_paging.S:21-27` | 2 GB of PTEs |
-| `boot_paging.S:30-31` | `CR3` |
-| `boot_paging.S:34-36` | `CR0.PG` |
-| `boot_paging.S:38-39` | The indirect jump to the virtual address |
+| `kernel.S` — `// CALLING CONVENTION` block | `BEGIN` / `END` |
+| `kernel.S` — `main:` | `jmp boot_paging`, still unpaged |
+| `kernel.S` — `relocated:` | First code at the virtual address |
+| `boot_paging.S` — `// BOOT PAGE TABLES` block | The `- KERNEL_BASE` idiom |
+| `boot_paging.S` — `// 0.1) entry 0` | PDE 0, identity map |
+| `boot_paging.S` — `// 0.2)` | PDEs 1–511 zeroed |
+| `boot_paging.S` — `boot_paging_loop1` | PDEs 512–1023, the kernel window |
+| `boot_paging.S` — `loop_pgtbl_entry` | 2 GB of PTEs |
+| `boot_paging.S` — `movl	%eax, %cr3` | Directory address |
+| `boot_paging.S` — `orl	$0x80000000, %eax` | `CR0.PG` |
+| `boot_paging.S` — `jmp     *%eax` | The indirect jump to the virtual address |
 
 - [ ] **Step 7: Verify the build is byte-identical**
 
@@ -1165,16 +1173,18 @@ Must state:
 
 | Location | What |
 |---|---|
-| `allocator.S:2` | `create_phys_mem_list` — `BUG`, unaligned base |
-| `allocator.S:23` | `allocate_page` |
-| `allocator.S:27` | `BUG` — `test %ecx, 0x0` |
-| `allocator.S:43` | `free_page` — `NOTE`, no bounds check |
-| `allocator.S:58` | `allocate_process` — unfinished |
-| `allocator.S:75` | `BUG` — `%ecx` clobbered by the call |
-| `allocator.S:94` | `zero_page` — `BUG`, `%edi` never set |
-| `allocator.S:103` | `create_process_pages` — sketch only |
-| `kernelEnd.S:3-4` | The stack, and where it ends |
-| `kernelEnd.S:13-14` | `BUG` — `.byte` after `.align` |
+| `allocator.S` — `// PHYSICAL PAGE ALLOCATOR` block | Why LIFO |
+| `allocator.S` — `create_phys_mem_list` | Stack fill — `BUG`, unaligned base |
+| `allocator.S` — `allocate_page` | The pop |
+| `allocator.S` — `test	%ecx, 0x0` | `BUG` — memory operand, not a register |
+| `allocator.S` — `free_page` | The push — `NOTE`, no bounds check |
+| `allocator.S` — `allocate_process` | Unfinished, placeholder flags |
+| `allocator.S` — `movl	%eax, %ecx` | `BUG` — clobbered by the next call |
+| `allocator.S` — `zero_page` | `BUG` — `%edi` never set |
+| `allocator.S` — `create_process_pages` | Design sketch only |
+| `kernelEnd.S` — `aviable_phys_mem_stack_bottom` | The stack storage |
+| `kernelEnd.S` — `aviable_phys_mem_stack_top` | Where it collides with `boot_pgdir` |
+| `kernelEnd.S` — `end:` | `BUG` — `.byte` after `.align` |
 
 - [ ] **Step 6: Verify the build is byte-identical**
 
@@ -1309,12 +1319,12 @@ Must state:
 
 | Location | What |
 |---|---|
-| `hello.S:1-2` | `mesg` in `.text` |
-| `hello.S:11-12` | `0xb8000`, source and destination |
-| `hello.S:14-20` | The character/attribute pair loop |
-| `hello.S:18` | Attribute `0x07` |
-| `clear_screen.S:7-8` | Destination and the blank cell value |
-| `clear_screen.S:10` | `BUG` — byte count used as a word count |
+| `hello.S` — `mesg:` | The string, sitting in `.text` |
+| `hello.S` — `mprint:` | Setup, `0xb8000` as destination |
+| `hello.S` — `print_loop` | The character/attribute pair loop |
+| `hello.S` — `movb	$7,%al` | Attribute `0x07`, light grey on black |
+| `clear_screen.S` — `clr_scr` | Destination and the blank cell value |
+| `clear_screen.S` — `movl	$0xf9e,%ecx` | `BUG` — byte count used as a word count |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -1490,12 +1500,12 @@ Must state:
 
 | Location | What |
 |---|---|
-| `link.ld:5` | `. = 0x7c00` |
-| `link_kernel.ld:3-5` | `VMA = LMA + VIRTUAL_KERNEL_BASE` |
-| `link_kernel.ld:15` | `KERNEL_PHYS_END` from the location counter |
-| `Makefile:17` | The prerequisite order that defines the translation unit |
-| `Makefile:18` | `as -al` and the `kernel.asm` listing |
-| `Makefile:26` | `seek=1`, matching `load_kernel`'s LBA |
+| `link.ld` — `. = 0x7c00` | The boot-sector origin |
+| `link_kernel.ld` — `VMA = LMA + VIRTUAL_KERNEL_BASE` | The high/low split |
+| `link_kernel.ld` — `KERNEL_PHYS_END` | Taken from the location counter |
+| `Makefile` — `$(KERN_NAME) : kernel.S` | Prerequisite order = translation unit |
+| `Makefile` — `as -al -o kernel.o` | The `kernel.asm` listing |
+| `Makefile` — `seek=1` | Matches `load_kernel`'s LBA |
 
 - [ ] **Step 5: Verify the build is byte-identical**
 
@@ -1572,7 +1582,7 @@ Must contain:
 
 - **Build and verify**, copied from `CLAUDE.md`: `make`, `make make_disk`, `make clean`, `./mk.sh`. State that `qemu` is not in the container and the image is booted outside it.
 - **What is unfinished:** `allocate_process` returns nothing and uses placeholder flags; `create_process_pages` is comments only; there is no IDT, no fault handler, no user mode, and no memory map query.
-- **Known bugs:** a table of all seven, each with its `file:line` and a one-line summary, pointing at `TODO.md` as the tracker.
+- **Known bugs:** a table of all seven, each with a symbolic anchor (per the Global Constraints — file plus label or instruction, not a line number) and a one-line summary, pointing at `TODO.md` as the tracker. `TODO.md` itself keeps `file:line` form, matching the three entries already there.
 - A chapter index linking 01 through 08.
 
 - [ ] **Step 2: Append the four new bugs to `TODO.md`**
@@ -1619,6 +1629,17 @@ Then confirm all nine chapters exist:
 ls docs/notes/
 ```
 Expected: `00-overview.md` through `08-build-system.md`.
+
+Then verify every **In the code** anchor actually resolves. Each row's Location cell names a file and a symbolic anchor; the anchor string must appear in that file. Extract and check them:
+```sh
+grep -hoE '^\| `([a-zA-Z_]+\.(S|ld))` — `([^`]+)`' docs/notes/*.md \
+  | sed -E 's/^\| `([^`]+)` — `(.*)`$/\1\t\2/' | sort -u \
+  | while IFS=$'\t' read -r file anchor; do
+      grep -qF "$anchor" "$file" && echo "OK   $file :: $anchor" \
+                                 || echo "BROKEN $file :: $anchor"
+    done
+```
+Expected: every line `OK`, none `BROKEN`. Rows whose Location is prose rather than a backticked anchor (for example `boot.S` — the stack setup above `kernel_entry:`) are not matched by this grep; check those by eye.
 
 - [ ] **Step 4: Verify the build is byte-identical one final time**
 
