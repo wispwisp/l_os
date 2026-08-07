@@ -1535,7 +1535,9 @@ Run:
 ```sh
 make make_disk >/dev/null 2>&1 && wc -c my_boot.img && hexdump -C my_boot.img | head -1
 ```
-Expected: `2109952 my_boot.img`, and a first line of hexdump showing the boot sector, not zeros.
+Expected: `2109953 my_boot.img`, and a first line of hexdump showing the boot sector, not zeros.
+
+That size is `512 + 2109441`: `dd` defaults to 512-byte blocks, so `seek=1` writes `kernel.bin` at offset 512, and the result exceeds the 1440 KB the first `dd` laid down. Measured, not derived.
 
 - [ ] **Step 7: Clean up and commit**
 
