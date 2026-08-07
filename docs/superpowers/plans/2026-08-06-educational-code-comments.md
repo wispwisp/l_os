@@ -1557,6 +1557,7 @@ thing that only surfaces when adding a file breaks the image."
 **Files:**
 - Create: `docs/notes/00-overview.md`
 - Modify: `TODO.md`
+- Modify: `CLAUDE.md` — one carried correction. Its Architecture section states "Nothing is declared `.global`; labels resolve across files directly." The second clause is right, the first is not: `boot.S:14` declares `start` and `kernel.S:42` declares `main`, both as linker `ENTRY()` targets. Chapter 08 states this correctly ("nothing *needs* to be declared `.global`"), so `CLAUDE.md` currently contradicts it.
 
 **Interfaces:**
 - Consumes: all eight chapters from Tasks 1–8; every `BUG:` annotation placed so far.
