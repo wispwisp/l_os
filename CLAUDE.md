@@ -71,7 +71,7 @@ kernel image, to the allocator.
 Hard constraint: only 512 bytes of the kernel are loaded. Kernel code currently
 ends at 0x80100174 (~370 bytes), so it still fits. Growing past one sector means
 raising the sector count written to port 0x1f2 **and** the `insw` counter
-(`$0x100`) in `load_kernel` (boot.S:80, boot.S:111).
+(`$0x100`) in `load_kernel` (boot.S:224, boot.S:258).
 
 ## One translation unit
 
@@ -80,7 +80,9 @@ Makefile's prerequisite order (kernel.S first, kernelEnd.S last). So:
 
 - The `BEGIN`/`END` macros and the `.set` constants (`PHYS_PAGES_COUNT`,
   `KERNEL_BASE`) at the top of `kernel.S` are visible in every other file.
-- Nothing is declared `.global`; labels resolve across files directly.
+- Only the two `ENTRY()` targets are declared `.global` — `start` in boot.S
+  and `main` in kernel.S. Nothing else needs to be: it's all one
+  translation unit, so labels resolve across files directly.
 - A new `.S` file must be added to the `$(KERN_NAME)` prerequisite list *before*
   `kernelEnd.S`, which holds all storage and must stay last.
 

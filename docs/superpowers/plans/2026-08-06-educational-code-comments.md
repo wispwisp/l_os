@@ -24,7 +24,10 @@
 - **Linker scripts take `/* */` only.** `//` and `#` are not comments to `ld`.
 - **Makefile comments sit at column 0, never on a tab-indented recipe line.** A `#` inside a recipe is passed to the shell instead of being stripped by `make`.
 - **All comments are English.** Existing comments are rewritten and their typos corrected; the two Russian notes are translated.
+  - **One exception, ruled by the author:** the design-sketch comments inside `create_process_pages` in `allocator.S` are preserved exactly as written, `exeption` typo included. They are a record of design intent, not explanatory prose. Task 6 Step 3 is authoritative on this.
 - **Marker prefixes:** `BUG:` for a defect (mechanism + intended form, no fix). `NOTE:` for a deliberate simplification.
+- **Never locate code by line number.** Any line range still written in this plan refers to the *original, pre-pass* file and goes stale the moment an earlier task annotates that file — `boot.S` alone is edited by Tasks 1 through 4. Find the code to replace by matching the existing instructions shown inside the step's replacement block. Those instructions are reproduced exactly as they appear in the source, so they are reliable search keys; the line numbers are not.
+- **Chapter anchors are symbolic, never line numbers.** Each chapter's **In the code** table cites the file plus a label, a distinctive instruction, or the ALL-CAPS block header this pass adds — `` `boot.S` — `seta20_1` ``, not `` `boot.S:15-21` ``. Line numbers rot: this pass grows `boot.S` from 140 to roughly 230 lines across Tasks 1–4 alone, and any later edit shifts them again. Symbolic anchors survive that and are greppable, which is how Task 9 verifies them. Every anchor string must appear verbatim in the file it names. This byte-exactness applies to the **In the code** table only. Instructions mentioned in running prose may normalize whitespace — write `` `jmp *%eax` `` mid-sentence even though the source has five spaces — because prose should read naturally and is not machine-checked.
 - **Do not touch** `build_claudecode_isolation_container.sh`, `run_claudecode_isolation_container.sh`, `claudecode.dockerfile`, `check_grammar.sh`. `claudecode.dockerfile` has unrelated staged changes — leave them staged.
 - **Commit authorship:** name `wisp`, email `forworkandtravel@yandex.ru`. Short imperative subject ≤72 chars, body wrapped at 72, explains *why*. No AI-attribution trailers.
   ```sh
@@ -147,10 +150,11 @@ Must state, with these exact values:
 
 | Location | What |
 |---|---|
-| `boot.S:4-5` | `start:`, `.code16` |
-| `boot.S:7-8` | `cli` / `cld` |
-| `boot.S:10-13` | Segment register zeroing |
-| `link.ld:5` | `. = 0x7c00` |
+| `boot.S` — `# BOOT SECTOR` block | Why `0x7c00`, why 512 bytes |
+| `boot.S` — `start:` | Real-mode entry, `.code16` |
+| `boot.S` — `cli` / `cld` | Interrupt masking, string direction |
+| `boot.S` — `xorw %ax, %ax` | Segment register zeroing |
+| `link.ld` — `. = 0x7c00` | The origin that makes it resolve |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -178,14 +182,14 @@ trustworthy. Neither is visible from the instructions themselves."
 ### Task 2: The A20 gate and the GDT
 
 **Files:**
-- Modify: `boot.S:15-28` (A20), `boot.S:123-136` (GDT table)
+- Modify: `boot.S` — the `seta20_1` / `seta20_2` block, and the `gdt:` / `gdtdesc:` table near the end of the file
 - Create: `docs/notes/02-a20-and-gdt.md`
 
 **Interfaces:**
 - Consumes: the block format from Task 1.
 - Produces: the `BUG:` block shape — state the mechanism, then the intended form, then whether it bites in practice. Tasks 4, 6, 7, 8 reuse it.
 
-- [ ] **Step 1: Annotate the A20 gate — replace `boot.S:15-28`**
+- [ ] **Step 1: Annotate the A20 gate — replace the block from `seta20_1:` through the `outb %al, $0x60` that follows `seta20_2:`**
 
 ```
 	####################
@@ -232,7 +236,7 @@ seta20_2:
 	outb	%al, $0x60
 ```
 
-- [ ] **Step 2: Annotate the GDT — replace `boot.S:123-136`**
+- [ ] **Step 2: Annotate the GDT — replace the block from `.p2align 2` through the `.long	gdt` line under `gdtdesc:`**
 
 ```
 	####################
@@ -267,7 +271,9 @@ seta20_2:
 	.p2align 2
 gdt:
 	# Entry 0 must be null: selector 0 is the architecturally
-	# defined "invalid" value, and loading it faults on use.
+	# defined "invalid" value. Loading it into CS or SS faults
+	# immediately; loading it into DS, ES, FS or GS is allowed,
+	# and the fault arrives when that segment is used.
 	.word 0,0
 	.byte 0,0,0,0
 	# code seg:
@@ -296,16 +302,18 @@ Must state:
 - Decode `0x9a`, `0x92`, `0xcf` bit by bit, including that `0xcf` splits into flags `0xc` and limit`[19:16]` `0xf`.
 - Why the flat model exists: segmentation cannot be disabled, so it is neutralised.
 - Selector arithmetic: index × 8, hence `0x08` and `0x10`.
-- The `BUG` at `boot.S:25`.
+- The `BUG`: the `jnz seta20_1` inside `seta20_2`.
 - Close with the **In the code** table:
 
 | Location | What |
 |---|---|
-| `boot.S:15-21` | Poll, then command `0xd1` |
-| `boot.S:22-28` | Poll, then data `0xdf` |
-| `boot.S:25` | `BUG` — jump targets `seta20_1` |
-| `boot.S:124-133` | The three descriptors |
-| `boot.S:134-136` | `gdtdesc`, the `lgdt` operand |
+| `boot.S` — `# A20 GATE` block | The history and the 8042 protocol |
+| `boot.S` — `seta20_1` | Poll `0x64`, then command `0xd1` |
+| `boot.S` — `seta20_2` | Poll again, then data `0xdf` |
+| `boot.S` — the `jnz seta20_1` inside `seta20_2` | `BUG` — wrong jump target |
+| `boot.S` — `# THE GDT` block | Descriptor layout and the flat model |
+| `boot.S` — `gdt:` | The three descriptors |
+| `boot.S` — `gdtdesc:` | The `lgdt` operand |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -334,23 +342,26 @@ target slip found while reading it."
 ### Task 3: The protected-mode switch
 
 **Files:**
-- Modify: `boot.S:30-59` (switch, `protcseg`, stack, `kernel_entry`), `boot.S:137-140` (signature)
+- Modify: `boot.S` — the `lgdt` / `CR0.PE` / `ljmp` switch, `protcseg:` through `spin:`, and the `boot_signature:` block at the end
 - Create: `docs/notes/03-protected-mode.md`
 
 **Interfaces:**
 - Consumes: the block format from Task 1; the GDT descriptors annotated in Task 2 (`lgdt gdtdesc` here refers to them).
 - Produces: the `NOTE:` block shape, first used here for the Cyrillic label.
 
-- [ ] **Step 1: Annotate the switch — replace `boot.S:30-38`**
+- [ ] **Step 1: Annotate the switch — replace the block from the `####################` / `# protectd mode:` divider through `ljmp	$0x8, $protcseg`**
 
 ```
 	####################
 	# ENTER PROTECTED MODE
 	####################
-	# Three steps, in this order and no other:
-	#   1. lgdt - the table must already be valid before any
-	#      selector load, because the very next step makes
-	#      selector loads meaningful.
+	# Three steps. What is forced is that both of the first two
+	# precede the third:
+	#   1. lgdt - the table has to be valid before anything can
+	#      consult it. Intel documents lgdt-first as the
+	#      recommended sequence; steps 1 and 2 could in
+	#      principle swap, since nothing reads the GDT between
+	#      them.
 	#   2. Set CR0 bit 0 (PE). The CPU is in protected mode from
 	#      here, but CS still holds a real-mode segment value.
 	#   3. A FAR jump. Only a far jump or far call reloads CS,
@@ -370,7 +381,7 @@ target slip found while reading it."
 
 The old `# pr.mode enable flag` and `# jump im 32-bit (selecotr, addr)` typos are corrected above.
 
-- [ ] **Step 2: Annotate `protcseg`, the stack, and `kernel_entry` — replace `boot.S:40-59`**
+- [ ] **Step 2: Annotate `protcseg`, the stack, and `kernel_entry` — replace the block from `.code32` through `spin:	jmp	spin`**
 
 ```
 	.code32
@@ -386,9 +397,11 @@ protcseg:
 	movw    %ax, %gs
 	movw    %ax, %ss
 
-	# The stack goes at 0x7c00 and grows downward, into the free
-	# low memory below the boot sector. Nothing lives there, so
-	# it cannot collide with this code sitting just above it.
+	# The stack goes at 0x7c00 and grows downward, into the
+	# roughly 30 KB of free memory below this code. The
+	# interrupt vector table (0x0-0x3ff) and the BIOS data area
+	# (0x400-0x4ff) do occupy the very bottom, but a boot
+	# sector's stack never grows deep enough to reach them.
 	# EBP is zeroed to terminate any frame-pointer walk.
 	#
 	# NOTE: the 'c' in this label is Cyrillic U+0441, not Latin
@@ -412,7 +425,7 @@ spin:	jmp	spin
 
 The label `staсk_initialization` must be pasted with its Cyrillic character intact — copy it from the existing source rather than retyping.
 
-- [ ] **Step 3: Annotate the boot signature — replace `boot.S:137-140`**
+- [ ] **Step 3: Annotate the boot signature — replace the block from `boot_signature:` through `.byte	0xAA`**
 
 ```
 boot_signature:
@@ -432,22 +445,23 @@ boot_signature:
 
 Must state:
 - What protected mode buys: 32-bit addressing, privilege rings, and the paging that chapter 05 turns on.
-- The three-step sequence and why the order is forced.
+- The three-step sequence, and precisely what about the order is forced: both `lgdt` and `CR0.PE` must precede the far jump, but they could swap with each other. Do not claim all three are order-locked.
 - Why a far jump is required: it is the only way to reload `CS`, and `CS`'s descriptor carries the D bit that selects 16- vs 32-bit decoding. A near jump would leave the CPU decoding 32-bit instructions with 16-bit defaults.
 - The pipeline-flush framing: the far jump also discards instructions prefetched under the old mode.
 - Why the other five segment registers must be reloaded separately.
-- Stack placement at `0x7c00` growing down, and that this is why nothing needs to be reserved for it.
+- Stack placement at `0x7c00` growing down into roughly 30 KB of free memory. Be accurate about what is below it: the interrupt vector table holds `0x0`–`0x3ff` and the BIOS data area `0x400`–`0x4ff`. Do not write that low memory is empty — say the stack never grows deep enough to reach them.
 - The `0x55AA` signature and the `.org` trick as a build-time size assertion.
 - Close with the **In the code** table:
 
 | Location | What |
 |---|---|
-| `boot.S:32` | `lgdt gdtdesc` |
-| `boot.S:33-35` | `CR0.PE` |
-| `boot.S:38` | `ljmp $0x8, $protcseg` |
-| `boot.S:41-48` | Data selector reload |
-| `boot.S:50-52` | Stack at `0x7c00` |
-| `boot.S:138-140` | `.org` and `0x55AA` |
+| `boot.S` — `# ENTER PROTECTED MODE` block | Why the order is forced |
+| `boot.S` — `lgdt    gdtdesc` | Loading the descriptor table |
+| `boot.S` — `orl	$0x1, %eax` | Setting `CR0.PE` |
+| `boot.S` — `ljmp	$0x8, $protcseg` | The far jump that reloads `CS` |
+| `boot.S` — `protcseg:` | Data selector reload |
+| `boot.S` — the stack setup above `kernel_entry:` | Stack at `0x7c00`, growing down |
+| `boot.S` — `boot_signature:` | `.org` and `0x55AA` |
 
 - [ ] **Step 5: Verify the build is byte-identical**
 
@@ -479,14 +493,14 @@ diagnose."
 ### Task 4: ATA PIO disk read
 
 **Files:**
-- Modify: `boot.S:62-118`
+- Modify: `boot.S` — `wait_disk` through the end of `load_kernel`
 - Create: `docs/notes/04-ata-pio.md`
 
 **Interfaces:**
 - Consumes: the block format from Task 1; the `BUG:` shape from Task 2.
 - Produces: nothing later tasks depend on. This closes out `boot.S`.
 
-- [ ] **Step 1: Annotate `wait_disk` — replace `boot.S:62-72`**
+- [ ] **Step 1: Annotate `wait_disk` — replace the block from the `####################` divider pair above `#func:` through the `ret` that ends `wait_disk`**
 
 ```
 	####################
@@ -526,7 +540,7 @@ testwd:	inb	(%dx), %al
 	ret
 ```
 
-- [ ] **Step 2: Annotate `load_kernel` — replace `boot.S:74-118`**
+- [ ] **Step 2: Annotate `load_kernel` — replace the block from the `#func:` above `load_kernel:` through the `ret` that ends it**
 
 ```
 	####################
@@ -625,12 +639,13 @@ Must state:
 
 | Location | What |
 |---|---|
-| `boot.S:66-72` | `wait_disk`, the BSY/DRDY poll |
-| `boot.S:79-81` | Sector count — `BUG` |
-| `boot.S:84-95` | LBA bytes into `0x1f3`–`0x1f5` |
-| `boot.S:96-99` | Drive select, `0xe0` |
-| `boot.S:101-105` | Command `0x20` |
-| `boot.S:109-116` | The `insw` transfer |
+| `boot.S` — `wait_disk` / `testwd` | The BSY/DRDY poll |
+| `boot.S` — `load_kernel` | The whole PIO sequence |
+| `boot.S` — `movb	$0x1, %al # sector count = 1` | Sector count — `BUG` |
+| `boot.S` — the `$0xf3` / `$0xf4` / `$0xf5` writes | LBA bytes |
+| `boot.S` — `movb	$0xe0, %al` | Drive select, LBA mode |
+| `boot.S` — `movb	$0x20, %al` | READ SECTORS command |
+| `boot.S` — `repnz insw` | The data transfer |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -667,7 +682,7 @@ bite when the kernel grows."
 - Consumes: the block format from Task 1, translated to `//` comments — the ruled header becomes `// ------------------------------------------------------`.
 - Produces: the `KERNEL_BASE` subtraction idiom explanation, which Task 6 and Task 8 both refer back to.
 
-- [ ] **Step 1: Annotate the macros and constants — replace `kernel.S:1-18`**
+- [ ] **Step 1: Annotate the macros and constants — replace the block from `// macros secion:` through the `.set	KERNEL_BASE, 0x80000000` line**
 
 ```
 	// ------------------------------------------------------
@@ -710,7 +725,7 @@ bite when the kernel grows."
 	.set	KERNEL_BASE, 0x80000000
 ```
 
-- [ ] **Step 2: Annotate `main` — replace `kernel.S:20-36`**
+- [ ] **Step 2: Annotate `main` — replace the block from `.code32` through `elop:	jmp elop`**
 
 ```
 	.code32
@@ -758,13 +773,15 @@ elop:	jmp elop
 	// bits and flags in the low 12.
 	//
 	// Flag 0x7 = P | RW | US: present, writable, and reachable
-	// from ring 3. US is set on everything here, which is wrong
-	// for kernel memory but harmless while there is no user
-	// mode to protect against.
+	// from ring 3. Every entry written with a non-zero value
+	// carries US - PDE 0, PDEs 512-1023, and all the PTEs. PDEs
+	// 1-511 are the exception: they are written as plain zero,
+	// so no flags at all. US on the mapped kernel entries is
+	// wrong, but harmless while there is no user mode yet.
 	// See docs/notes/05-paging.md.
 ```
 
-- [ ] **Step 4: Annotate the directory build — replace `boot_paging.S:2-18`**
+- [ ] **Step 4: Annotate the directory build — replace the block from `// 0) PAGE DIRECTORY:` through `loop    boot_paging_loop1`**
 
 ```
 	// 0) PAGE DIRECTORY
@@ -798,7 +815,7 @@ boot_paging_loop1:
 	loop    boot_paging_loop1
 ```
 
-- [ ] **Step 5: Annotate the table fill and the paging enable — replace `boot_paging.S:20-39`**
+- [ ] **Step 5: Annotate the table fill and the paging enable — replace the block from `// 1) MAKE PAGETABLE ENTRYS` through `jmp     *%eax` at the end of the file**
 
 ```
 	// 1) PAGE TABLE ENTRIES
@@ -854,15 +871,17 @@ Must state:
 
 | Location | What |
 |---|---|
-| `kernel.S:27` | `jmp boot_paging` |
-| `boot_paging.S:3-4` | The `- KERNEL_BASE` idiom |
-| `boot_paging.S:6-7` | PDE 0, identity map |
-| `boot_paging.S:9-11` | PDEs 1–511 zeroed |
-| `boot_paging.S:13-18` | PDEs 512–1023, the kernel window |
-| `boot_paging.S:21-27` | 2 GB of PTEs |
-| `boot_paging.S:30-31` | `CR3` |
-| `boot_paging.S:34-36` | `CR0.PG` |
-| `boot_paging.S:38-39` | The indirect jump to the virtual address |
+| `kernel.S` — `// CALLING CONVENTION` block | `BEGIN` / `END` |
+| `kernel.S` — `main:` | `jmp boot_paging`, still unpaged |
+| `kernel.S` — `relocated:` | First code at the virtual address |
+| `boot_paging.S` — `// BOOT PAGE TABLES` block | The `- KERNEL_BASE` idiom |
+| `boot_paging.S` — `// 0.1) entry 0` | PDE 0, identity map |
+| `boot_paging.S` — `// 0.2)` | PDEs 1–511 zeroed |
+| `boot_paging.S` — `boot_paging_loop1` | PDEs 512–1023, the kernel window |
+| `boot_paging.S` — `loop_pgtbl_entry` | 2 GB of PTEs |
+| `boot_paging.S` — `movl	%eax, %cr3` | Directory address |
+| `boot_paging.S` — `orl	$0x80000000, %eax` | `CR0.PG` |
+| `boot_paging.S` — `jmp     *%eax` | The indirect jump to the virtual address |
 
 - [ ] **Step 7: Verify the build is byte-identical**
 
@@ -901,7 +920,7 @@ window."
 
 This task carries four of the seven bugs. Annotate every one; change no instruction.
 
-- [ ] **Step 1: Annotate `create_phys_mem_list` — replace `allocator.S:1-19`**
+- [ ] **Step 1: Annotate `create_phys_mem_list` — replace the block from `// void(void)` at the top of the file through the `END` that closes `create_phys_mem_list`**
 
 ```
 	// ------------------------------------------------------
@@ -948,7 +967,7 @@ loop_create_phys_mem_list:
 	END
 ```
 
-- [ ] **Step 2: Annotate `allocate_page` and `free_page` — replace `allocator.S:22-51`**
+- [ ] **Step 2: Annotate `allocate_page` and `free_page` — replace the block from `// long(void)` above `allocate_page:` through the `END` that closes `free_page`**
 
 ```
 	// long(void)
@@ -1006,7 +1025,7 @@ free_page:
 
 The Russian note on the `test` line is translated in place to `#// index zero is a page too`. The commented-out `leal` line is left exactly as it is — it is the author's dead code, not a comment to rewrite.
 
-- [ ] **Step 3: Annotate the process stubs — replace `allocator.S:57-122`**
+- [ ] **Step 3: Annotate the process stubs — replace the block from the `//////////////////////////////` / `//         processes        //` divider through the end of the file**
 
 ```
 	//void(void)
@@ -1164,16 +1183,18 @@ Must state:
 
 | Location | What |
 |---|---|
-| `allocator.S:2` | `create_phys_mem_list` — `BUG`, unaligned base |
-| `allocator.S:23` | `allocate_page` |
-| `allocator.S:27` | `BUG` — `test %ecx, 0x0` |
-| `allocator.S:43` | `free_page` — `NOTE`, no bounds check |
-| `allocator.S:58` | `allocate_process` — unfinished |
-| `allocator.S:75` | `BUG` — `%ecx` clobbered by the call |
-| `allocator.S:94` | `zero_page` — `BUG`, `%edi` never set |
-| `allocator.S:103` | `create_process_pages` — sketch only |
-| `kernelEnd.S:3-4` | The stack, and where it ends |
-| `kernelEnd.S:13-14` | `BUG` — `.byte` after `.align` |
+| `allocator.S` — `// PHYSICAL PAGE ALLOCATOR` block | Why LIFO |
+| `allocator.S` — `create_phys_mem_list` | Stack fill — `BUG`, unaligned base |
+| `allocator.S` — `allocate_page` | The pop |
+| `allocator.S` — `test	%ecx, 0x0` | `BUG` — memory operand, not a register |
+| `allocator.S` — `free_page` | The push — `NOTE`, no bounds check |
+| `allocator.S` — `allocate_process` | Unfinished, placeholder flags |
+| `allocator.S` — `movl	%eax, %ecx` | `BUG` — clobbered by the next call |
+| `allocator.S` — `zero_page` | `BUG` — `%edi` never set |
+| `allocator.S` — `create_process_pages` | Design sketch only |
+| `kernelEnd.S` — `aviable_phys_mem_stack_bottom` | The stack storage |
+| `kernelEnd.S` — `aviable_phys_mem_stack_top` | Where it collides with `boot_pgdir` |
+| `kernelEnd.S` — `end:` | `BUG` — `.byte` after `.align` |
 
 - [ ] **Step 6: Verify the build is byte-identical**
 
@@ -1308,12 +1329,12 @@ Must state:
 
 | Location | What |
 |---|---|
-| `hello.S:1-2` | `mesg` in `.text` |
-| `hello.S:11-12` | `0xb8000`, source and destination |
-| `hello.S:14-20` | The character/attribute pair loop |
-| `hello.S:18` | Attribute `0x07` |
-| `clear_screen.S:7-8` | Destination and the blank cell value |
-| `clear_screen.S:10` | `BUG` — byte count used as a word count |
+| `hello.S` — `mesg:` | The string, sitting in `.text` |
+| `hello.S` — `mprint:` | Setup, `0xb8000` as destination |
+| `hello.S` — `print_loop` | The character/attribute pair loop |
+| `hello.S` — `movb	$7,%al` | Attribute `0x07`, light grey on black |
+| `clear_screen.S` — `clr_scr` | Destination and the blank cell value |
+| `clear_screen.S` — `movl	$0xf9e,%ecx` | `BUG` — byte count used as a word count |
 
 - [ ] **Step 4: Verify the build is byte-identical**
 
@@ -1489,12 +1510,12 @@ Must state:
 
 | Location | What |
 |---|---|
-| `link.ld:5` | `. = 0x7c00` |
-| `link_kernel.ld:3-5` | `VMA = LMA + VIRTUAL_KERNEL_BASE` |
-| `link_kernel.ld:15` | `KERNEL_PHYS_END` from the location counter |
-| `Makefile:17` | The prerequisite order that defines the translation unit |
-| `Makefile:18` | `as -al` and the `kernel.asm` listing |
-| `Makefile:26` | `seek=1`, matching `load_kernel`'s LBA |
+| `link.ld` — `. = 0x7c00` | The boot-sector origin |
+| `link_kernel.ld` — `VMA = LMA + VIRTUAL_KERNEL_BASE` | The high/low split |
+| `link_kernel.ld` — `KERNEL_PHYS_END` | Taken from the location counter |
+| `Makefile` — `$(KERN_NAME) : kernel.S` | Prerequisite order = translation unit |
+| `Makefile` — `as -al -o kernel.o` | The `kernel.asm` listing |
+| `Makefile` — `seek=1` | Matches `load_kernel`'s LBA |
 
 - [ ] **Step 5: Verify the build is byte-identical**
 
@@ -1516,7 +1537,9 @@ Run:
 ```sh
 make make_disk >/dev/null 2>&1 && wc -c my_boot.img && hexdump -C my_boot.img | head -1
 ```
-Expected: `2109952 my_boot.img`, and a first line of hexdump showing the boot sector, not zeros.
+Expected: `2109953 my_boot.img`, and a first line of hexdump showing the boot sector, not zeros.
+
+That size is `512 + 2109441`: `dd` defaults to 512-byte blocks, so `seek=1` writes `kernel.bin` at offset 512, and the result exceeds the 1440 KB the first `dd` laid down. Measured, not derived.
 
 - [ ] **Step 7: Clean up and commit**
 
@@ -1536,6 +1559,7 @@ thing that only surfaces when adding a file breaks the image."
 **Files:**
 - Create: `docs/notes/00-overview.md`
 - Modify: `TODO.md`
+- Modify: `CLAUDE.md` — one carried correction. Its Architecture section states "Nothing is declared `.global`; labels resolve across files directly." The second clause is right, the first is not: `boot.S:14` declares `start` and `kernel.S:42` declares `main`, both as linker `ENTRY()` targets. Chapter 08 states this correctly ("nothing *needs* to be declared `.global`"), so `CLAUDE.md` currently contradicts it.
 
 **Interfaces:**
 - Consumes: all eight chapters from Tasks 1–8; every `BUG:` annotation placed so far.
@@ -1571,7 +1595,7 @@ Must contain:
 
 - **Build and verify**, copied from `CLAUDE.md`: `make`, `make make_disk`, `make clean`, `./mk.sh`. State that `qemu` is not in the container and the image is booted outside it.
 - **What is unfinished:** `allocate_process` returns nothing and uses placeholder flags; `create_process_pages` is comments only; there is no IDT, no fault handler, no user mode, and no memory map query.
-- **Known bugs:** a table of all seven, each with its `file:line` and a one-line summary, pointing at `TODO.md` as the tracker.
+- **Known bugs:** a table of all seven, each with a symbolic anchor (per the Global Constraints — file plus label or instruction, not a line number) and a one-line summary, pointing at `TODO.md` as the tracker. `TODO.md` itself keeps `file:line` form, matching the three entries already there.
 - A chapter index linking 01 through 08.
 
 - [ ] **Step 2: Append the four new bugs to `TODO.md`**
@@ -1618,6 +1642,17 @@ Then confirm all nine chapters exist:
 ls docs/notes/
 ```
 Expected: `00-overview.md` through `08-build-system.md`.
+
+Then verify every **In the code** anchor actually resolves. Each row's Location cell names a file and a symbolic anchor; the anchor string must appear in that file. Extract and check them:
+```sh
+grep -hoE '^\| `([a-zA-Z_]+\.(S|ld))` — `([^`]+)`' docs/notes/*.md \
+  | sed -E 's/^\| `([^`]+)` — `(.*)`$/\1\t\2/' | sort -u \
+  | while IFS=$'\t' read -r file anchor; do
+      grep -qF "$anchor" "$file" && echo "OK   $file :: $anchor" \
+                                 || echo "BROKEN $file :: $anchor"
+    done
+```
+Expected: every line `OK`, none `BROKEN`. Rows whose Location is prose rather than a backticked anchor (for example `boot.S` — the stack setup above `kernel_entry:`) are not matched by this grep; check those by eye.
 
 - [ ] **Step 4: Verify the build is byte-identical one final time**
 
