@@ -80,7 +80,9 @@ Makefile's prerequisite order (kernel.S first, kernelEnd.S last). So:
 
 - The `BEGIN`/`END` macros and the `.set` constants (`PHYS_PAGES_COUNT`,
   `KERNEL_BASE`) at the top of `kernel.S` are visible in every other file.
-- Nothing is declared `.global`; labels resolve across files directly.
+- Only the two `ENTRY()` targets are declared `.global` — `start` in boot.S
+  and `main` in kernel.S. Nothing else needs to be: it's all one
+  translation unit, so labels resolve across files directly.
 - A new `.S` file must be added to the `$(KERN_NAME)` prerequisite list *before*
   `kernelEnd.S`, which holds all storage and must stay last.
 

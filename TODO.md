@@ -18,3 +18,26 @@ Found while documenting the code; none are fixed yet.
   fits today, but the next routine can silently run off the end of what was
   loaded. The sector count written to port 0x1f2 and the `insw` counter
   (`$0x100`) have to grow together.
+
+- [ ] **`seta20_2` re-sends the command byte instead of re-polling**
+  (boot.S:25). The busy-wait after the `0xd1` command write branches back
+  to `seta20_1`, so a controller that is still busy repeats the command
+  write rather than just re-reading status. Should be `jnz seta20_2`.
+  Harmless in practice — the 8042 is idle by that point.
+
+- [ ] **`clr_scr` clears twice the screen** (clear_screen.S:10). `$0xf9e`
+  is the buffer size in bytes, but `rep stosw` writes a word per
+  iteration, so it zeroes 7996 bytes over a 4000-byte screen and runs out
+  to 0xb9f3c. Invisible only because that is still VGA memory. The count
+  should be `$0x7d0` — 2000 cells of 80 × 25.
+
+- [ ] **`allocate_process` dereferences a clobbered `%ecx`**
+  (allocator.S:75-78). `movl %eax, %ecx` saves a page, then
+  `call allocate_page` overwrites `%ecx` with the stack index before
+  `movl %eax, (%ecx)` writes through it. The saved value has to survive
+  the call, on the stack or in a callee-saved register.
+
+- [ ] **`zero_page` has no destination** (allocator.S:94-99). Neither
+  `%edi` nor the direction flag is set, so it zeroes 4 KB from wherever
+  `%edi` happened to point, in whichever direction DF happened to select.
+  The count is correct: `0x400` dwords is exactly one page.
