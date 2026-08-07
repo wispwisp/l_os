@@ -39,6 +39,29 @@ start:
 	movw	%ax, %es
 	movw	%ax, %ss
 
+	####################
+	# A20 GATE
+	####################
+	# The 8086 had 20 address lines, so an address above 1 MB
+	# wrapped around to 0. Enough software relied on that wrap
+	# that the IBM AT, which had more lines, put line 20 behind
+	# a gate that boots disabled. Until it is opened, physical
+	# 0x100000 aliases 0x0 - and 0x100000 is exactly where the
+	# kernel is about to be loaded.
+	#
+	# The gate is driven by the 8042 keyboard controller, which
+	# got the job because it had a spare output pin.
+	#   port 0x64  status (read) / command (write)
+	#   port 0x60  data
+	# Status bit 1 set means the input buffer is still full, so
+	# poll it clear before each write.
+	#
+	# Sequence: command 0xd1 ("write output port"), then the
+	# byte 0xdf, whose bit 1 is A20.
+	#
+	# See docs/notes/02-a20-and-gdt.md for the two other ways to
+	# do this - port 0x92, and BIOS INT 15h AX=2401.
+
 seta20_1:
 	inb	$0x64, %al
 	testb	$0x2, %al
@@ -49,6 +72,11 @@ seta20_1:
 seta20_2:
 	inb	$0x64, %al
 	testb	$0x2, %al
+	# BUG (TODO.md): this targets seta20_1, so a controller that
+	# is still busy re-runs the 0xd1 command write instead of
+	# just re-polling status. It should be seta20_2. Harmless in
+	# practice - the controller is idle by this point - but a
+	# genuine copy-paste slip.
 	jnz	seta20_1
 	# 0xdf -> port 0x60 :
 	movb	$0xdf, %al
@@ -147,9 +175,39 @@ load_kernel:
 	####################
 	####################
 
+	####################
+	# THE GDT
+	####################
+	# Protected mode still addresses memory through segments;
+	# there is no way to switch them off. The flat model works
+	# around that by defining segments that span all 4 GB, so
+	# every linear address equals the offset and segmentation
+	# stops mattering. Paging does the real work later.
+	#
+	# A descriptor is 8 bytes, with the base and limit split
+	# across non-contiguous fields - a compatibility scar from
+	# the 286, which had only 24-bit bases:
+	#   bytes 0-1  limit[15:0]
+	#   bytes 2-3  base[15:0]
+	#   byte  4    base[23:16]
+	#   byte  5    access
+	#   byte  6    flags[3:0] : limit[19:16]
+	#   byte  7    base[31:24]
+	#
+	# access 0x9a = present, ring 0, code, readable
+	# access 0x92 = present, ring 0, data, writable
+	# flags  0xc  = G (limit counts 4 KB units) + D (32-bit)
+	#
+	# G is what turns a 20-bit limit of 0xfffff into 4 GB.
+	#
+	# A selector is a byte offset into this table, which is why
+	# the code selector is 0x08 and data is 0x10.
+	# See docs/notes/02-a20-and-gdt.md.
+
 	.p2align 2
 gdt:
-	#first zero entry in table :
+	# Entry 0 must be null: selector 0 is the architecturally
+	# defined "invalid" value, and loading it faults on use.
 	.word 0,0
 	.byte 0,0,0,0
 	# code seg:
@@ -159,8 +217,11 @@ gdt:
 	.word	0xffff, 0x0
 	.byte	0x0, 0x92, 0xcf, 0x0
 gdtdesc:
-	.word	0x17	# // gdt size limit
-	.long	gdt	# // gdt addres
+	# What lgdt reads: a 16-bit limit followed by a 32-bit base.
+	# The limit is size-in-bytes minus one, so three entries of
+	# 8 bytes gives 0x17.
+	.word	0x17	# gdt size limit
+	.long	gdt	# gdt address
 boot_signature:	
 	.org	0x0200-2
 	.byte	0x55
