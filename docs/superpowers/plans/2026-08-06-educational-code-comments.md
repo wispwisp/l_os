@@ -24,8 +24,9 @@
 - **Linker scripts take `/* */` only.** `//` and `#` are not comments to `ld`.
 - **Makefile comments sit at column 0, never on a tab-indented recipe line.** A `#` inside a recipe is passed to the shell instead of being stripped by `make`.
 - **All comments are English.** Existing comments are rewritten and their typos corrected; the two Russian notes are translated.
-  - **One exception, ruled by the author:** the design-sketch comments inside `create_process_pages` (`allocator.S:106-120`) are preserved exactly as written, `exeption` typo included. They are a record of design intent, not explanatory prose. Task 6 Step 3 is authoritative on this.
+  - **One exception, ruled by the author:** the design-sketch comments inside `create_process_pages` in `allocator.S` are preserved exactly as written, `exeption` typo included. They are a record of design intent, not explanatory prose. Task 6 Step 3 is authoritative on this.
 - **Marker prefixes:** `BUG:` for a defect (mechanism + intended form, no fix). `NOTE:` for a deliberate simplification.
+- **Never locate code by line number.** Any line range still written in this plan refers to the *original, pre-pass* file and goes stale the moment an earlier task annotates that file — `boot.S` alone is edited by Tasks 1 through 4. Find the code to replace by matching the existing instructions shown inside the step's replacement block. Those instructions are reproduced exactly as they appear in the source, so they are reliable search keys; the line numbers are not.
 - **Chapter anchors are symbolic, never line numbers.** Each chapter's **In the code** table cites the file plus a label, a distinctive instruction, or the ALL-CAPS block header this pass adds — `` `boot.S` — `seta20_1` ``, not `` `boot.S:15-21` ``. Line numbers rot: this pass grows `boot.S` from 140 to roughly 230 lines across Tasks 1–4 alone, and any later edit shifts them again. Symbolic anchors survive that and are greppable, which is how Task 9 verifies them. Every anchor string must appear verbatim in the file it names.
 - **Do not touch** `build_claudecode_isolation_container.sh`, `run_claudecode_isolation_container.sh`, `claudecode.dockerfile`, `check_grammar.sh`. `claudecode.dockerfile` has unrelated staged changes — leave them staged.
 - **Commit authorship:** name `wisp`, email `forworkandtravel@yandex.ru`. Short imperative subject ≤72 chars, body wrapped at 72, explains *why*. No AI-attribution trailers.
@@ -181,14 +182,14 @@ trustworthy. Neither is visible from the instructions themselves."
 ### Task 2: The A20 gate and the GDT
 
 **Files:**
-- Modify: `boot.S:15-28` (A20), `boot.S:123-136` (GDT table)
+- Modify: `boot.S` — the `seta20_1` / `seta20_2` block, and the `gdt:` / `gdtdesc:` table near the end of the file
 - Create: `docs/notes/02-a20-and-gdt.md`
 
 **Interfaces:**
 - Consumes: the block format from Task 1.
 - Produces: the `BUG:` block shape — state the mechanism, then the intended form, then whether it bites in practice. Tasks 4, 6, 7, 8 reuse it.
 
-- [ ] **Step 1: Annotate the A20 gate — replace `boot.S:15-28`**
+- [ ] **Step 1: Annotate the A20 gate — replace the block from `seta20_1:` through the `outb %al, $0x60` that follows `seta20_2:`**
 
 ```
 	####################
@@ -235,7 +236,7 @@ seta20_2:
 	outb	%al, $0x60
 ```
 
-- [ ] **Step 2: Annotate the GDT — replace `boot.S:123-136`**
+- [ ] **Step 2: Annotate the GDT — replace the block from `.p2align 2` through the `.long	gdt` line under `gdtdesc:`**
 
 ```
 	####################
@@ -299,7 +300,7 @@ Must state:
 - Decode `0x9a`, `0x92`, `0xcf` bit by bit, including that `0xcf` splits into flags `0xc` and limit`[19:16]` `0xf`.
 - Why the flat model exists: segmentation cannot be disabled, so it is neutralised.
 - Selector arithmetic: index × 8, hence `0x08` and `0x10`.
-- The `BUG` at `boot.S:25`.
+- The `BUG`: the `jnz seta20_1` inside `seta20_2`.
 - Close with the **In the code** table:
 
 | Location | What |
@@ -339,14 +340,14 @@ target slip found while reading it."
 ### Task 3: The protected-mode switch
 
 **Files:**
-- Modify: `boot.S:30-59` (switch, `protcseg`, stack, `kernel_entry`), `boot.S:137-140` (signature)
+- Modify: `boot.S` — the `lgdt` / `CR0.PE` / `ljmp` switch, `protcseg:` through `spin:`, and the `boot_signature:` block at the end
 - Create: `docs/notes/03-protected-mode.md`
 
 **Interfaces:**
 - Consumes: the block format from Task 1; the GDT descriptors annotated in Task 2 (`lgdt gdtdesc` here refers to them).
 - Produces: the `NOTE:` block shape, first used here for the Cyrillic label.
 
-- [ ] **Step 1: Annotate the switch — replace `boot.S:30-38`**
+- [ ] **Step 1: Annotate the switch — replace the block from the `####################` / `# protectd mode:` divider through `ljmp	$0x8, $protcseg`**
 
 ```
 	####################
@@ -375,7 +376,7 @@ target slip found while reading it."
 
 The old `# pr.mode enable flag` and `# jump im 32-bit (selecotr, addr)` typos are corrected above.
 
-- [ ] **Step 2: Annotate `protcseg`, the stack, and `kernel_entry` — replace `boot.S:40-59`**
+- [ ] **Step 2: Annotate `protcseg`, the stack, and `kernel_entry` — replace the block from `.code32` through `spin:	jmp	spin`**
 
 ```
 	.code32
@@ -417,7 +418,7 @@ spin:	jmp	spin
 
 The label `staсk_initialization` must be pasted with its Cyrillic character intact — copy it from the existing source rather than retyping.
 
-- [ ] **Step 3: Annotate the boot signature — replace `boot.S:137-140`**
+- [ ] **Step 3: Annotate the boot signature — replace the block from `boot_signature:` through `.byte	0xAA`**
 
 ```
 boot_signature:
@@ -485,14 +486,14 @@ diagnose."
 ### Task 4: ATA PIO disk read
 
 **Files:**
-- Modify: `boot.S:62-118`
+- Modify: `boot.S` — `wait_disk` through the end of `load_kernel`
 - Create: `docs/notes/04-ata-pio.md`
 
 **Interfaces:**
 - Consumes: the block format from Task 1; the `BUG:` shape from Task 2.
 - Produces: nothing later tasks depend on. This closes out `boot.S`.
 
-- [ ] **Step 1: Annotate `wait_disk` — replace `boot.S:62-72`**
+- [ ] **Step 1: Annotate `wait_disk` — replace the block from the `####################` divider pair above `#func:` through the `ret` that ends `wait_disk`**
 
 ```
 	####################
@@ -532,7 +533,7 @@ testwd:	inb	(%dx), %al
 	ret
 ```
 
-- [ ] **Step 2: Annotate `load_kernel` — replace `boot.S:74-118`**
+- [ ] **Step 2: Annotate `load_kernel` — replace the block from the `#func:` above `load_kernel:` through the `ret` that ends it**
 
 ```
 	####################
@@ -674,7 +675,7 @@ bite when the kernel grows."
 - Consumes: the block format from Task 1, translated to `//` comments — the ruled header becomes `// ------------------------------------------------------`.
 - Produces: the `KERNEL_BASE` subtraction idiom explanation, which Task 6 and Task 8 both refer back to.
 
-- [ ] **Step 1: Annotate the macros and constants — replace `kernel.S:1-18`**
+- [ ] **Step 1: Annotate the macros and constants — replace the block from `// macros secion:` through the `.set	KERNEL_BASE, 0x80000000` line**
 
 ```
 	// ------------------------------------------------------
@@ -717,7 +718,7 @@ bite when the kernel grows."
 	.set	KERNEL_BASE, 0x80000000
 ```
 
-- [ ] **Step 2: Annotate `main` — replace `kernel.S:20-36`**
+- [ ] **Step 2: Annotate `main` — replace the block from `.code32` through `elop:	jmp elop`**
 
 ```
 	.code32
@@ -771,7 +772,7 @@ elop:	jmp elop
 	// See docs/notes/05-paging.md.
 ```
 
-- [ ] **Step 4: Annotate the directory build — replace `boot_paging.S:2-18`**
+- [ ] **Step 4: Annotate the directory build — replace the block from `// 0) PAGE DIRECTORY:` through `loop    boot_paging_loop1`**
 
 ```
 	// 0) PAGE DIRECTORY
@@ -805,7 +806,7 @@ boot_paging_loop1:
 	loop    boot_paging_loop1
 ```
 
-- [ ] **Step 5: Annotate the table fill and the paging enable — replace `boot_paging.S:20-39`**
+- [ ] **Step 5: Annotate the table fill and the paging enable — replace the block from `// 1) MAKE PAGETABLE ENTRYS` through `jmp     *%eax` at the end of the file**
 
 ```
 	// 1) PAGE TABLE ENTRIES
@@ -910,7 +911,7 @@ window."
 
 This task carries four of the seven bugs. Annotate every one; change no instruction.
 
-- [ ] **Step 1: Annotate `create_phys_mem_list` — replace `allocator.S:1-19`**
+- [ ] **Step 1: Annotate `create_phys_mem_list` — replace the block from `// void(void)` at the top of the file through the `END` that closes `create_phys_mem_list`**
 
 ```
 	// ------------------------------------------------------
@@ -957,7 +958,7 @@ loop_create_phys_mem_list:
 	END
 ```
 
-- [ ] **Step 2: Annotate `allocate_page` and `free_page` — replace `allocator.S:22-51`**
+- [ ] **Step 2: Annotate `allocate_page` and `free_page` — replace the block from `// long(void)` above `allocate_page:` through the `END` that closes `free_page`**
 
 ```
 	// long(void)
@@ -1015,7 +1016,7 @@ free_page:
 
 The Russian note on the `test` line is translated in place to `#// index zero is a page too`. The commented-out `leal` line is left exactly as it is — it is the author's dead code, not a comment to rewrite.
 
-- [ ] **Step 3: Annotate the process stubs — replace `allocator.S:57-122`**
+- [ ] **Step 3: Annotate the process stubs — replace the block from the `//////////////////////////////` / `//         processes        //` divider through the end of the file**
 
 ```
 	//void(void)
