@@ -355,10 +355,13 @@ target slip found while reading it."
 	####################
 	# ENTER PROTECTED MODE
 	####################
-	# Three steps, in this order and no other:
-	#   1. lgdt - the table must already be valid before any
-	#      selector load, because the very next step makes
-	#      selector loads meaningful.
+	# Three steps. What is forced is that both of the first two
+	# precede the third:
+	#   1. lgdt - the table has to be valid before anything can
+	#      consult it. Intel documents lgdt-first as the
+	#      recommended sequence; steps 1 and 2 could in
+	#      principle swap, since nothing reads the GDT between
+	#      them.
 	#   2. Set CR0 bit 0 (PE). The CPU is in protected mode from
 	#      here, but CS still holds a real-mode segment value.
 	#   3. A FAR jump. Only a far jump or far call reloads CS,
@@ -394,9 +397,11 @@ protcseg:
 	movw    %ax, %gs
 	movw    %ax, %ss
 
-	# The stack goes at 0x7c00 and grows downward, into the free
-	# low memory below the boot sector. Nothing lives there, so
-	# it cannot collide with this code sitting just above it.
+	# The stack goes at 0x7c00 and grows downward, into the
+	# roughly 30 KB of free memory below this code. The
+	# interrupt vector table (0x0-0x3ff) and the BIOS data area
+	# (0x400-0x4ff) do occupy the very bottom, but a boot
+	# sector's stack never grows deep enough to reach them.
 	# EBP is zeroed to terminate any frame-pointer walk.
 	#
 	# NOTE: the 'c' in this label is Cyrillic U+0441, not Latin
@@ -440,11 +445,11 @@ boot_signature:
 
 Must state:
 - What protected mode buys: 32-bit addressing, privilege rings, and the paging that chapter 05 turns on.
-- The three-step sequence and why the order is forced.
+- The three-step sequence, and precisely what about the order is forced: both `lgdt` and `CR0.PE` must precede the far jump, but they could swap with each other. Do not claim all three are order-locked.
 - Why a far jump is required: it is the only way to reload `CS`, and `CS`'s descriptor carries the D bit that selects 16- vs 32-bit decoding. A near jump would leave the CPU decoding 32-bit instructions with 16-bit defaults.
 - The pipeline-flush framing: the far jump also discards instructions prefetched under the old mode.
 - Why the other five segment registers must be reloaded separately.
-- Stack placement at `0x7c00` growing down, and that this is why nothing needs to be reserved for it.
+- Stack placement at `0x7c00` growing down into roughly 30 KB of free memory. Be accurate about what is below it: the interrupt vector table holds `0x0`–`0x3ff` and the BIOS data area `0x400`–`0x4ff`. Do not write that low memory is empty — say the stack never grows deep enough to reach them.
 - The `0x55AA` signature and the `.org` trick as a build-time size assertion.
 - Close with the **In the code** table:
 
