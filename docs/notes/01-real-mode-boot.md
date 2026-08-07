@@ -74,7 +74,8 @@ in more detail in chapter 03.
 
 | Location | What |
 |---|---|
-| `boot.S:4-5` | `start:`, `.code16` |
-| `boot.S:7-8` | `cli` / `cld` |
-| `boot.S:10-13` | Segment register zeroing |
-| `link.ld:5` | `. = 0x7c00` |
+| `boot.S` — `# BOOT SECTOR` block | Why `0x7c00`, why 512 bytes |
+| `boot.S` — `start:` | Real-mode entry, `.code16` |
+| `boot.S` — `cli` / `cld` | Interrupt masking, string direction |
+| `boot.S` — `xorw	%ax, %ax` | Segment register zeroing |
+| `link.ld` — `. = 0x7c00` | The origin that makes it resolve |
