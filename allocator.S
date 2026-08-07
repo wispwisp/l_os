@@ -58,7 +58,13 @@ allocate_page:
 	// operand, so this ANDs ECX with the dword at absolute
 	// address 0 and sets flags from that. Which branch runs is
 	// decided by whatever physical page 0 happens to hold.
-	// The intended instruction is `test %ecx, %ecx`.
+	//
+	// Note that `test %ecx, %ecx` is NOT the fix either: with the
+	// `jnz` below it would send index 0 down the out-of-memory
+	// path, and slot 0 holds a real page. The check has to test
+	// the SIGN, since the index only goes negative once slot 0
+	// has been handed out - `testl %ecx, %ecx` with `jns`, or an
+	// explicit `cmpl $0, %ecx` with `jge`.
 	test	%ecx, 0x0 #// index zero is a page too
 	jnz	allocate_page_1
 	xor	%eax,%eax		# // return zero - no memory available

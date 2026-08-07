@@ -31,8 +31,8 @@ print_loop:
 	testb	%al, %al
 	jz	print_loop_exit
 	stosb
-	# 0x07 = light grey on black. The low nibble is foreground,
-	# the high nibble background; bit 7 is either blink or
+	# 0x07 = light grey on black. Bits 0-3 are foreground, bits
+	# 4-6 are background, and bit 7 is either blink or
 	# bright-background, depending on how the adapter is
 	# configured.
 	movb	$7,%al

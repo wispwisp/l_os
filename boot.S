@@ -74,9 +74,13 @@ seta20_2:
 	testb	$0x2, %al
 	# BUG (TODO.md): this targets seta20_1, so a controller that
 	# is still busy re-runs the 0xd1 command write instead of
-	# just re-polling status. It should be seta20_2. Harmless in
-	# practice - the controller is idle by this point - but a
-	# genuine copy-paste slip.
+	# just re-polling status. It should be seta20_2. The outb
+	# just above has genuinely just filled the input buffer, so
+	# IBF can really be set here - that is exactly why this
+	# second poll exists. It converges anyway: re-issuing 0xd1 is
+	# idempotent, so the loop just keeps looping until the buffer
+	# drains and exits normally. Harmless, but a genuine
+	# copy-paste slip.
 	jnz	seta20_1
 	# 0xdf -> port 0x60 :
 	movb	$0xdf, %al

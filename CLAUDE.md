@@ -71,7 +71,7 @@ kernel image, to the allocator.
 Hard constraint: only 512 bytes of the kernel are loaded. Kernel code currently
 ends at 0x80100174 (~370 bytes), so it still fits. Growing past one sector means
 raising the sector count written to port 0x1f2 **and** the `insw` counter
-(`$0x100`) in `load_kernel` (boot.S:80, boot.S:111).
+(`$0x100`) in `load_kernel` (boot.S:224, boot.S:258).
 
 ## One translation unit
 

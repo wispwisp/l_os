@@ -40,9 +40,11 @@ The 8042 dance is not the only way to enable A20, just the most
 portable one:
 
 - **Fast A20**, port `0x92`: writing with bit 1 set opens the gate in
-  a single I/O write, no polling. Not present on every chipset, and on
-  some machines that byte is wired to something else entirely (a fast
-  reset line), so blindly poking it is riskier than it looks.
+  a single I/O write, no polling. Not present on every chipset, and
+  bit 0 of that same byte is the fast CPU reset line, so a careless
+  write that sets bit 0 - blindly writing a whole byte instead of
+  reading, modifying just bit 1, and writing it back - resets the CPU
+  instead of just opening the gate.
 - **BIOS `INT 15h`, `AX=2401`**: asks the BIOS to do it. Only works in
   real mode, before the interrupt vector table stops being trustworthy,
   and not every BIOS implements the call.
@@ -75,9 +77,7 @@ across non-contiguous positions - a compatibility scar left by the
 ## Decoding the code and data descriptors
 
 `boot.S` builds a null descriptor plus one code and one data
-descriptor, both using access byte and flags nibble encoded together
-in a single `0xcf` byte in the low nibble/high nibble sense described
-below:
+descriptor:
 
 - `0x9a` (code access) = present, ring 0, code segment, readable.
 - `0x92` (data access) = present, ring 0, data segment, writable.
@@ -105,10 +105,15 @@ descriptor occupies bytes 0-7, the code descriptor bytes 8-15
 `jnz seta20_2`. If the controller is still busy at that point, this
 re-issues the `0xd1` command write from the top instead of just
 re-polling status - a copy-paste slip from `seta20_1`'s otherwise
-identical loop. It is harmless in the one place this code actually
-runs, because the controller is idle again well before this second
-poll executes, but it is a genuine bug and is left unfixed here so it
-can be pointed at directly.
+identical loop. The `outb` that writes `0xd1` runs immediately before
+this poll, so the input buffer genuinely can still be full right
+here - that is the reason this second poll exists at all, per the
+protocol above. It is harmless anyway: re-issuing `0xd1` is
+idempotent, so the mistargeted branch just repeats the write and
+loops back into the same poll until the buffer drains and the check
+passes, converging on the correct end state by a longer path. It is a
+genuine bug and is left unfixed here so it can be pointed at
+directly.
 
 ## In the code
 
@@ -117,7 +122,7 @@ can be pointed at directly.
 | `boot.S` — `# A20 GATE` block | The history and the 8042 protocol |
 | `boot.S` — `seta20_1` | Poll `0x64`, then command `0xd1` |
 | `boot.S` — `seta20_2` | Poll again, then data `0xdf` |
-| `boot.S` — the `jnz seta20_1` inside `seta20_2` | `BUG` — wrong jump target |
+| `boot.S` — the `jnz	seta20_1` inside `seta20_2` | `BUG` — wrong jump target |
 | `boot.S` — `# THE GDT` block | Descriptor layout and the flat model |
 | `boot.S` — `gdt:` | The three descriptors |
 | `boot.S` — `gdtdesc:` | The `lgdt` operand |

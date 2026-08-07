@@ -59,13 +59,22 @@ This subsystem carries four of the seven bugs documented in
 1. **The `test` operand.** `allocate_page` checks for an empty stack
    with `test %ecx, 0x0`. In AT&T syntax a bare `0x0` is a memory
    operand, not an immediate, so this ANDs `%ecx` with the dword at
-   absolute address 0 instead of testing `%ecx` against itself. Which
-   branch is taken ends up decided by whatever physical page 0 holds.
+   absolute address 0 instead of testing anything about the index.
+   Which branch is taken ends up decided by whatever physical page 0
+   holds. But `test %ecx, %ecx` is not the fix either: paired with the
+   `jnz` that follows, it sets ZF - and takes the empty-stack branch -
+   exactly when the index is 0, and slot 0 holds a real, allocatable
+   page. The index only goes negative once slot 0 has been handed out,
+   so the check that actually distinguishes "empty" from "slot 0" has
+   to test the sign, not equality with zero.
 2. **The `KERNEL_PHYS_END` skew.** `kernelEnd.S`'s `end` label emits
-   a `.byte` after its `.align`, so the symbol - and therefore
-   `KERNEL_PHYS_END` - lands one byte past a page boundary
-   (`0x303001`, not `0x303000`). Every address `create_phys_mem_list`
-   pushes inherits that one-byte skew.
+   a `.byte` after its `.align`, but that `.byte` only moves the
+   location counter - the symbol `end` itself is still page-aligned,
+   at `0x80303000`. `link_kernel.ld` takes `KERNEL_PHYS_END` from the
+   location counter, not from `end`, so `KERNEL_PHYS_END` is the one
+   that lands one byte past the page boundary (`0x303001`, not
+   `0x303000`). Every address `create_phys_mem_list` pushes inherits
+   that one-byte skew.
 3. **The `%ecx` clobber.** In `allocate_process`, a page address is
    saved into `%ecx` and then `allocate_page` is called again before
    it's used - but `allocate_page` itself loads the stack index into

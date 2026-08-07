@@ -105,7 +105,7 @@ each bug lives in.
 | `%ecx` is clobbered before it's used | `allocator.S` — `allocate_process` | A page address saved into `%ecx` is overwritten by the following `allocate_page` call, which loads the stack index into the same register, before the saved value is written through. |
 | `zero_page` has no destination | `allocator.S` — `zero_page` | `rep stosl` runs with neither `%edi` nor the direction flag set, so it zeroes 4 KB starting from wherever `%edi` already happened to point. |
 | `clr_scr` clears twice the screen | `clear_screen.S` — `clr_scr` | `$0xf9e` is a byte count but feeds a word-at-a-time `rep stosw`, writing 7996 bytes over a 4000-byte screen. Invisible because the overrun still lands in VGA memory. |
-| `KERNEL_PHYS_END` is not page-aligned | `kernelEnd.S` — `end:` | A `.byte` is emitted after the `.align 0x1000` that precedes it, leaving the symbol - and `KERNEL_PHYS_END` - one byte past a page boundary. |
+| `KERNEL_PHYS_END` is not page-aligned | `kernelEnd.S` — `end:` | A `.byte` is emitted after the `.align 0x1000` that precedes it. That only moves the location counter - the symbol `end` itself stays page-aligned - but `link_kernel.ld` takes `KERNEL_PHYS_END` from the location counter, so it lands one byte past the boundary. |
 
 ## Chapter index
 

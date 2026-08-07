@@ -64,11 +64,14 @@ register is zero. An offset of `0x7c00` and a physical address of
 
 ## The stack
 
-Memory below `0x7c00` is free - nothing the BIOS relies on lives there
-- so the boot sector uses it for its stack. `%esp` is set to `start`
-(`0x7c00` itself) once the CPU reaches protected mode, and the stack
-grows downward from there into that free region. That setup is covered
-in more detail in chapter 03.
+Memory below `0x7c00` is not all free - the interrupt vector table
+occupies `0x0`-`0x3ff` and the BIOS data area occupies `0x400`-`0x4ff`
+- but the roughly 30 KB between `0x500` and `0x7c00` is, and a boot
+sector's stack never grows deep enough to descend all the way down to
+those structures. `%esp` is set to `start` (`0x7c00` itself) once the
+CPU reaches protected mode, and the stack grows downward from there
+into that free region. That setup is covered in more detail in
+chapter 03.
 
 ## In the code
 

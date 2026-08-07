@@ -120,14 +120,50 @@ a few hundred bytes.
 
 ## `US` is set on kernel pages - a latent problem
 
-Every entry `boot_paging.S` writes, PDE and PTE alike, carries `US`
-(bit 2), meaning ring 3 code can reach it. That is wrong for memory
-that belongs to the kernel: user code should not be able to read or
-write kernel structures at all. It is harmless for now only because
-there is no ring 3 yet - nothing capable of exploiting the hole
-exists. The moment user-mode processes are introduced, this flag has
-to be revisited, or every kernel page is trivially accessible from
-user code.
+Every entry `boot_paging.S` writes with a non-zero value - PDE 0, PDEs
+512-1023, and all `0x80000` PTEs - carries `US` (bit 2), meaning ring 3
+code can reach it. (PDEs 1-511 are the exception: they are written as
+plain zero, so they carry no flags at all - not present, not `US`,
+nothing - which is what makes the whole user half of the address space
+unmapped rather than merely unprivileged.) `US` on the mapped kernel
+entries is wrong for memory that belongs to the kernel: user code
+should not be able to read or write kernel structures at all. It is
+harmless for now only because there is no ring 3 yet - nothing capable
+of exploiting the hole exists. The moment user-mode processes are
+introduced, this flag has to be revisited, or every mapped kernel page
+is trivially accessible from user code.
+
+## The `BEGIN`/`END` calling convention
+
+`relocated` is the first code that runs at the linked virtual address,
+and the first thing it does is `call create_phys_mem_list` - the first
+call in the kernel to a routine wrapped in `BEGIN`/`END`. Every routine
+from here on, in every file, opens with `BEGIN` and closes with `END`:
+
+```
+.macro BEGIN
+pushl	%ebp
+movl	%esp, %ebp
+.endm
+
+.macro END
+movl	%ebp, %esp
+popl	%ebp
+ret
+.endm
+```
+
+That's the standard EBP frame chain - each call pushes the caller's
+`%ebp`, so at any point a debugger (or a human) can walk the chain of
+saved `%ebp` values back to the outermost caller. There's no C here and
+no ABI to honour, so arguments and return values simply travel in
+registers rather than on the stack; the `// long(void)` or `// void(eax)`
+comment written above a label is that routine's signature, spelled out
+by hand because nothing enforces it mechanically. `BEGIN`/`END` preserve
+only `%ebp` - a callee that touches any other register is free to
+clobber it, so a caller that needs a register to survive a call has to
+save it itself, as `allocate_process` has to do around its
+`allocate_page` calls.
 
 ## In the code
 

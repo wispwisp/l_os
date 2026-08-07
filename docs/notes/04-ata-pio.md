@@ -83,6 +83,16 @@ In order, `load_kernel` does:
    before it just stages the address and count the command will use.
 5. Poll `wait_disk` again, then read the data out of `0x1f0`.
 
+## Walking the ports through `%dl`
+
+`load_kernel` sets `%dx` to `0x1f2` once and then, for the LBA and
+drive/command writes that follow, only ever rewrites the low byte,
+`%dl` - `0x1f2` is `%dh = 0x01`, `%dl = 0xf2`, and every port from
+`0x1f2` to `0x1f7` shares that same `0x01` high byte. Since all eight
+ports live in that one page, stepping `%dl` from `0xf2` up to `0xf7`
+is enough to address each of them in turn; `%dh` is set once and never
+touched again.
+
 ## `0x1f2 = 0` means 256, not zero
 
 The sector-count register is one byte, so it can only directly express
