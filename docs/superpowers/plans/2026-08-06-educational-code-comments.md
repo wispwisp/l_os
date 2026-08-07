@@ -773,9 +773,11 @@ elop:	jmp elop
 	// bits and flags in the low 12.
 	//
 	// Flag 0x7 = P | RW | US: present, writable, and reachable
-	// from ring 3. US is set on everything here, which is wrong
-	// for kernel memory but harmless while there is no user
-	// mode to protect against.
+	// from ring 3. Every entry written with a non-zero value
+	// carries US - PDE 0, PDEs 512-1023, and all the PTEs. PDEs
+	// 1-511 are the exception: they are written as plain zero,
+	// so no flags at all. US on the mapped kernel entries is
+	// wrong, but harmless while there is no user mode yet.
 	// See docs/notes/05-paging.md.
 ```
 
