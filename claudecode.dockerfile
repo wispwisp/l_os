@@ -5,7 +5,7 @@ FROM mirror.gcr.io/library/ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git npm curl wget \
+    build-essential git npm curl wget bsdextrautils \
     && rm -rf /var/lib/apt/lists/*
 
 ARG USER_ID
