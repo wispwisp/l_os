@@ -23,9 +23,6 @@ else
     docker run -it \
            --name "$CONTAINER_NAME" \
            -u $(id -u):$(id -g) \
-           --network host \
-           -e https_proxy="http://127.0.0.1:8080" \
-           -e http_proxy="http://127.0.0.1:8080" \
            -v $(pwd -P):/home/claudeuser/workspace \
            -v $local_claude:/home/claudeuser/.claude \
            "$IMAGE_NAME"

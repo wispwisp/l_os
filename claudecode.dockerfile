@@ -1,6 +1,6 @@
 # This is file for current directory claudecode isolation.
 
-FROM mirror.gcr.io/library/ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -22,9 +22,7 @@ USER claudeuser
 # Claude internal HTTP proxy on the host; only used during image build
 # for this install step.  Container runtime does not require the proxy.
 RUN date -u +"%Y-%m-%dT%H:%M:%SZ" > "/home/claudeuser/build-$(date -u +%Y-%m).txt"
-RUN curl \
-    -x http://127.0.0.1:8080 \
-    -fsSL https://claude.ai/install.sh | bash
+RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 
 # claude check grammar oneliner
